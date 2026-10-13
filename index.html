@@ -98,7 +98,7 @@
 
     <footer class="w-full max-w-md z-30 flex gap-2 pb-2">
         <div class="flex-1 py-2 bg-purple-900/60 border border-purple-700 rounded text-center text-[9px] text-purple-200 flex items-center justify-center px-2">
-            📁 Fichiers PNG dans le dossier final (ex: head1.png)
+            📁 Mettez vos images head1.png, head2.png, etc.
         </div>
         <button id="btnSound" class="px-3 py-2 bg-slate-800 border-b-4 border-slate-950 rounded text-xs text-white uppercase active:translate-y-0.5">
             🔊 ON
@@ -114,7 +114,7 @@
 
         <!-- Preview of loaded heads -->
         <div class="mb-6 w-full max-w-xs">
-            <span class="text-[10px] text-purple-400 block mb-2">TÊTES ACTIVES EN JEU :</span>
+            <span class="text-[10px] text-purple-400 block mb-2">TÊTES DÉTECTÉES :</span>
             <div id="headsPreview" class="flex flex-wrap justify-center gap-2 p-2 bg-slate-900 rounded border border-purple-800 max-h-24 overflow-y-auto">
                 <!-- Dynamically populated -->
             </div>
@@ -255,11 +255,13 @@
         // SVG fallback head (Jaune Smiley Retro)
         const defaultSVGHead = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="%23ffcc00" stroke="%23000" stroke-width="6"/><circle cx="35" cy="40" r="8" fill="%23000"/><circle cx="65" cy="40" r="8" fill="%23000"/><path d="M 30 65 Q 50 85 70 65" stroke="%23000" stroke-width="6" fill="none" stroke-linecap="round"/></svg>`;
 
-        // Liste des têtes (Ajoutez ici vos fichiers PNG PNG locaux : 'head1.png', 'head2.png', etc.)
+        // Liste des fichiers PNG que vous pouvez placer dans le même dossier sur GitHub/APK
         let customImages = [
-            defaultSVGHead,
-            // 'head1.png',
-            // 'head2.png'
+            'head1.png',
+            'head2.png',
+            'head3.png',
+            'head4.png',
+            'head5.png'
         ];
         
         let score = 0;
@@ -286,13 +288,18 @@
         function renderHeadsPreview() {
             headsPreview.innerHTML = '';
             customImages.forEach((src) => {
+                const container = document.createElement('div');
+                container.className = "w-10 h-10 rounded-full border-2 border-pink-500 bg-black flex items-center justify-center overflow-hidden relative";
+                
                 const img = document.createElement('img');
                 img.src = src;
-                img.className = "w-10 h-10 object-cover rounded-full border-2 border-pink-500 bg-black";
+                img.className = "w-full h-full object-cover";
                 img.onerror = () => {
+                    // Si l'image PNG n'existe pas dans le dossier, afficher la tête par défaut
                     img.src = defaultSVGHead;
                 };
-                headsPreview.appendChild(img);
+                container.appendChild(img);
+                headsPreview.appendChild(container);
             });
         }
 
@@ -329,7 +336,7 @@
 
             clearActiveHead();
 
-            const headSize = 75;
+            const headSize = 80;
             const rect = playArea.getBoundingClientRect();
             
             // Safety boundaries inside play area
@@ -341,16 +348,22 @@
 
             const randomSrc = customImages[Math.floor(Math.random() * customImages.length)];
 
+            // Conteneur de la tête
             const head = document.createElement('div');
-            head.className = 'absolute cursor-pointer rounded-full pop-in select-none z-20';
+            head.className = 'absolute cursor-pointer rounded-full pop-in select-none z-20 overflow-hidden shadow-lg shadow-pink-500/50 border-2 border-yellow-400 bg-black';
             head.style.width = `${headSize}px`;
             head.style.height = `${headSize}px`;
             head.style.left = `${posX}px`;
             head.style.top = `${posY}px`;
-            head.style.backgroundImage = `url('${randomSrc}'), url('${defaultSVGHead}')`;
-            head.style.backgroundSize = 'cover';
-            head.style.backgroundPosition = 'center';
-            head.style.filter = 'drop-shadow(0 0 8px rgba(255,255,0,0.8))';
+
+            // Image de la tête avec fallback
+            const img = document.createElement('img');
+            img.src = randomSrc;
+            img.className = 'w-full h-full object-cover pointer-events-none';
+            img.onerror = () => {
+                img.src = defaultSVGHead;
+            };
+            head.appendChild(img);
 
             // Tap handling function
             const handleTap = (e) => {
