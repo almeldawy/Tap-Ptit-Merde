@@ -1,0 +1,440 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Arcade Face Smash</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Press+Start+2P&display=swap" rel="stylesheet">
+    <style>
+        * {
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: manipulation;
+            font-family: 'Press Start 2P', cursive;
+        }
+
+        body {
+            background-color: #0b091a;
+            color: #fff;
+            overflow: hidden;
+        }
+
+        /* Retro Arcade Scanline Effect */
+        .scanlines {
+            background: linear-gradient(
+                rgba(18, 16, 16, 0) 50%, 
+                rgba(0, 0, 0, 0.35) 50%
+            );
+            background-size: 100% 4px;
+            pointer-events: none;
+        }
+
+        /* Arcade Neon Glow Text */
+        .glow-text {
+            text-shadow: 0 0 8px #ff007f, 0 0 15px #ff007f, 0 0 25px #ff007f;
+        }
+        
+        .glow-yellow {
+            text-shadow: 0 0 8px #ffcc00, 0 0 15px #ffcc00;
+        }
+
+        /* Floating Score Text Animation */
+        @keyframes floatUp {
+            0% { opacity: 1; transform: translateY(0) scale(1); }
+            100% { opacity: 0; transform: translateY(-60px) scale(1.5); }
+        }
+
+        .floating-score {
+            position: absolute;
+            animation: floatUp 0.6s ease-out forwards;
+            pointer-events: none;
+            font-size: 1.5rem;
+            color: #ffff00;
+            text-shadow: 2px 2px 0px #000;
+            z-index: 50;
+        }
+
+        /* Screen Shake on Hit/Miss */
+        .shake {
+            animation: shake 0.2s cubic-bezier(.36,.07,.19,.97) both;
+        }
+
+        @keyframes shake {
+            10%, 90% { transform: translate3d(-2px, 0, 0); }
+            20%, 80% { transform: translate3d(4px, 0, 0); }
+            30%, 50%, 70% { transform: translate3d(-6px, 0, 0); }
+            40%, 60% { transform: translate3d(6px, 0, 0); }
+        }
+
+        /* Target Animation */
+        .pop-in {
+            animation: popIn 0.15s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+        }
+
+        @keyframes popIn {
+            0% { transform: scale(0); }
+            100% { transform: scale(1); }
+        }
+    </style>
+</head>
+<body class="h-screen w-screen flex flex-col items-center justify-between p-4 relative overflow-hidden select-none">
+    <div class="scanlines absolute inset-0 z-40"></div>
+
+    <header class="w-full max-w-md flex justify-between items-center z-30 pt-2 px-2">
+        <div class="flex flex-col">
+            <span class="text-xs text-pink-500 uppercase tracking-wider">SCORE</span>
+            <span id="scoreDisplay" class="text-2xl text-yellow-400 glow-yellow">000000</span>
+        </div>
+        <div class="flex flex-col items-end">
+            <span class="text-xs text-cyan-400 uppercase tracking-wider">HIGH SCORE</span>
+            <span id="highScoreDisplay" class="text-2xl text-cyan-300">000000</span>
+        </div>
+    </header>
+
+    <div class="w-full max-w-md flex justify-between items-center z-30 px-2 mt-1">
+        <div id="comboDisplay" class="text-lg text-orange-400 opacity-0 transition-opacity">
+            COMBO <span id="comboCount">x0</span>!
+        </div>
+        <div class="flex items-center gap-1">
+            <span class="text-xs text-yellow-400">MODE:</span>
+            <span class="text-xs text-cyan-300">ARCADE INFINI</span>
+        </div>
+    </div>
+
+    <main id="playArea" class="relative w-full max-w-md flex-1 my-3 bg-slate-900 border-4 border-pink-600 rounded-lg shadow-[0_0_20px_rgba(255,0,127,0.5)] overflow-hidden cursor-crosshair">
+        <!-- Canvas for particle hit effects -->
+        <canvas id="particleCanvas" class="absolute inset-0 z-10 pointer-events-none"></canvas>
+    </main>
+
+    <footer class="w-full max-w-md z-30 flex gap-2 pb-2">
+        <div class="flex-1 py-3 bg-purple-900/60 border border-purple-700 rounded text-center text-[10px] text-purple-200 flex items-center justify-center px-2">
+            📁 Place tes PNGs dans le dossier final (ex: head1.png, head2.png)
+        </div>
+        <button id="btnSound" class="px-4 py-3 bg-slate-800 border-b-4 border-slate-950 rounded text-xs text-white uppercase">
+            🔊 ON
+        </button>
+    </footer>
+
+    <!-- START OVERLAY -->
+    <div id="modalOverlay" class="absolute inset-0 bg-black/90 z-50 flex flex-col items-center justify-center p-6 text-center">
+        <h1 class="text-3xl text-pink-500 glow-text mb-4 leading-relaxed" id="modalTitle">FACE SMASH ARCADE</h1>
+        <p id="modalSubtitle" class="text-xs text-gray-300 mb-6 leading-loose max-w-xs">
+            TAPPE LES TÊTES LE PLUS VITE POSSIBLE ! PAS DE GAME OVER, QUE DU PUR SCORE !
+        </p>
+
+        <!-- Preview of loaded heads -->
+        <div class="mb-6">
+            <span class="text-[10px] text-purple-400 block mb-2">TÊTES ACTIVES EN JEU (Dossier / Fichiers):</span>
+            <div id="headsPreview" class="flex flex-wrap justify-center gap-2 max-w-xs max-h-24 overflow-y-auto p-2 bg-slate-900 rounded border border-purple-800">
+                <!-- Dynamically populated -->
+            </div>
+        </div>
+
+        <button id="btnStart" class="w-full max-w-xs py-4 bg-yellow-400 hover:bg-yellow-300 text-black font-bold text-sm border-b-4 border-yellow-700 rounded-lg shadow-lg active:translate-y-1 transition-all glow-yellow uppercase">
+            COMMENCER !
+        </button>
+    </div>
+
+    <script>
+        class RetroAudioEngine {
+            constructor() {
+                this.ctx = null;
+                this.soundEnabled = true;
+            }
+
+            init() {
+                if (!this.ctx) {
+                    this.ctx = new (window.AudioContext || window.webkitAudioContext)();
+                }
+            }
+
+            playHit() {
+                if (!this.soundEnabled) return;
+                this.init();
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+                
+                osc.type = 'triangle';
+                osc.frequency.setValueAtTime(300, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(800, this.ctx.currentTime + 0.08);
+
+                gain.gain.setValueAtTime(0.3, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.08);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.08);
+            }
+
+            playMiss() {
+                if (!this.soundEnabled) return;
+                this.init();
+                const osc = this.ctx.createOscillator();
+                const gain = this.ctx.createGain();
+
+                osc.type = 'sawtooth';
+                osc.frequency.setValueAtTime(150, this.ctx.currentTime);
+                osc.frequency.exponentialRampToValueAtTime(40, this.ctx.currentTime + 0.25);
+
+                gain.gain.setValueAtTime(0.4, this.ctx.currentTime);
+                gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + 0.25);
+
+                osc.connect(gain);
+                gain.connect(this.ctx.destination);
+
+                osc.start();
+                osc.stop(this.ctx.currentTime + 0.25);
+            }
+
+            playGameOver() {
+                if (!this.soundEnabled) return;
+                this.init();
+                const notes = [200, 150, 100, 70];
+                notes.forEach((freq, idx) => {
+                    const osc = this.ctx.createOscillator();
+                    const gain = this.ctx.createGain();
+                    osc.type = 'sawtooth';
+                    osc.frequency.setValueAtTime(freq, this.ctx.currentTime + idx * 0.12);
+                    
+                    gain.gain.setValueAtTime(0.3, this.ctx.currentTime + idx * 0.12);
+                    gain.gain.exponentialRampToValueAtTime(0.01, this.ctx.currentTime + idx * 0.12 + 0.12);
+
+                    osc.connect(gain);
+                    gain.connect(this.ctx.destination);
+
+                    osc.start(this.ctx.currentTime + idx * 0.12);
+                    osc.stop(this.ctx.currentTime + idx * 0.12 + 0.12);
+                });
+            }
+        }
+
+        const audio = new RetroAudioEngine();
+
+        const canvas = document.getElementById('particleCanvas');
+        const ctx = canvas.getContext('2d');
+        let particles = [];
+
+        function resizeCanvas() {
+            const rect = canvas.parentElement.getBoundingClientRect();
+            canvas.width = rect.width;
+            canvas.height = rect.height;
+        }
+
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        function createExplosion(x, y, color = '#ff007f') {
+            for (let i = 0; i < 20; i++) {
+                const angle = Math.random() * Math.PI * 2;
+                const speed = Math.random() * 8 + 2;
+                particles.push({
+                    x, y,
+                    vx: Math.cos(angle) * speed,
+                    vy: Math.sin(angle) * speed,
+                    radius: Math.random() * 4 + 2,
+                    color: i % 2 === 0 ? color : '#ffff00',
+                    alpha: 1,
+                    decay: Math.random() * 0.03 + 0.02
+                });
+            }
+        }
+
+        function updateParticles() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            particles.forEach((p, index) => {
+                p.x += p.vx;
+                p.y += p.vy;
+                p.alpha -= p.decay;
+
+                if (p.alpha <= 0) {
+                    particles.splice(index, 1);
+                } else {
+                    ctx.save();
+                    ctx.globalAlpha = p.alpha;
+                    ctx.fillStyle = p.color;
+                    ctx.fillRect(p.x - p.radius, p.y - p.radius, p.radius * 2, p.radius * 2);
+                    ctx.restore();
+                }
+            });
+            requestAnimationFrame(updateParticles);
+        }
+        updateParticles();
+
+        const defaultSVGHead = `data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100"><circle cx="50" cy="50" r="45" fill="%23ffcc00" stroke="%23000" stroke-width="5"/><circle cx="35" cy="40" r="8" fill="%23000"/><circle cx="65" cy="40" r="8" fill="%23000"/><path d="M 30 65 Q 50 85 70 65" stroke="%23000" stroke-width="6" fill="none" stroke-linecap="round"/></svg>`;
+
+        // Liste des têtes chargées (vous pouvez ajouter ici vos images locales pour l'APK : 'head1.png', 'head2.png', etc.)
+        let customImages = [
+            defaultSVGHead,
+            // 'head1.png', 
+            // 'head2.png'
+        ];
+        
+        let score = 0;
+        let highScore = parseInt(localStorage.getItem('smash_highscore') || '0');
+        let combo = 0;
+        let gameActive = false;
+        let currentHeadTimeout = null;
+        let headSpawnRate = 1200; // Temps d'affichage initial en ms
+        let activeHeadElement = null;
+
+        // DOM elements
+        const playArea = document.getElementById('playArea');
+        const scoreDisplay = document.getElementById('scoreDisplay');
+        const highScoreDisplay = document.getElementById('highScoreDisplay');
+        const comboDisplay = document.getElementById('comboDisplay');
+        const comboCount = document.getElementById('comboCount');
+        const modalOverlay = document.getElementById('modalOverlay');
+        const modalTitle = document.getElementById('modalTitle');
+        const modalSubtitle = document.getElementById('modalSubtitle');
+        const btnStart = document.getElementById('btnStart');
+        const headsPreview = document.getElementById('headsPreview');
+        const btnSound = document.getElementById('btnSound');
+
+        // Update High score UI initial
+        highScoreDisplay.textContent = String(highScore).padStart(6, '0');
+
+        function renderHeadsPreview() {
+            headsPreview.innerHTML = '';
+            customImages.forEach((src, idx) => {
+                const img = document.createElement('img');
+                img.src = src;
+                img.className = "w-10 h-10 object-cover rounded-full border-2 border-pink-500 bg-black";
+                img.onerror = () => {
+                    img.src = defaultSVGHead; // Fallback si le fichier PNG local n'est pas encore trouvé
+                };
+                headsPreview.appendChild(img);
+            });
+        }
+        renderHeadsPreview();
+
+        btnSound.addEventListener('click', () => {
+            audio.soundEnabled = !audio.soundEnabled;
+            btnSound.textContent = audio.soundEnabled ? '🔊 ON' : '🔇 OFF';
+        });
+
+        function showFloatingText(text, x, y) {
+            const floatEl = document.createElement('div');
+            floatEl.className = 'floating-score font-bold';
+            floatEl.textContent = text;
+            floatEl.style.left = `${x}px`;
+            floatEl.style.top = `${y}px`;
+            playArea.appendChild(floatEl);
+
+            setTimeout(() => floatEl.remove(), 600);
+        }
+
+        function spawnHead() {
+            if (!gameActive) return;
+
+            // Si la tête disparaît toute seule sans être touchée, simple réapparition ailleurs (pas de perte de vie)
+            if (activeHeadElement) {
+                activeHeadElement.remove();
+                activeHeadElement = null;
+                combo = 0;
+                comboDisplay.classList.add('opacity-0');
+            }
+
+            // Create new head
+            const headSize = 80; // Size in px
+            const rect = playArea.getBoundingClientRect();
+            const maxX = rect.width - headSize - 20;
+            const maxY = rect.height - headSize - 20;
+
+            const posX = Math.max(10, Math.floor(Math.random() * maxX));
+            const posY = Math.max(10, Math.floor(Math.random() * maxY));
+
+            // Select random face image
+            const randomSrc = customImages[Math.floor(Math.random() * customImages.length)];
+
+            const head = document.createElement('div');
+            head.className = 'absolute cursor-pointer rounded-full pop-in select-none';
+            head.style.width = `${headSize}px`;
+            head.style.height = `${headSize}px`;
+            head.style.left = `${posX}px`;
+            head.style.top = `${posY}px`;
+            head.style.backgroundImage = `url(${randomSrc})`;
+            head.style.backgroundSize = 'cover';
+            head.style.backgroundPosition = 'center';
+            head.style.filter = 'drop-shadow(0 0 10px rgba(255,255,0,0.8))';
+
+            // Hit Interaction Event
+            const handleTap = (e) => {
+                e.stopPropagation();
+                if (!gameActive) return;
+
+                // Audio & Effects
+                audio.playHit();
+                const tapX = posX + headSize / 2;
+                const tapY = posY + headSize / 2;
+                createExplosion(tapX, tapY);
+
+                // Scoring calculation with Combo
+                combo++;
+                const pointsEarned = 100 * combo;
+                score += pointsEarned;
+                scoreDisplay.textContent = String(score).padStart(6, '0');
+
+                // High score update en direct
+                if (score > highScore) {
+                    highScore = score;
+                    localStorage.setItem('smash_highscore', highScore);
+                    highScoreDisplay.textContent = String(highScore).padStart(6, '0');
+                }
+
+                // Combo UI
+                if (combo > 1) {
+                    comboCount.textContent = `x${combo}`;
+                    comboDisplay.classList.remove('opacity-0');
+                }
+
+                showFloatingText(`+${pointsEarned}`, posX, posY);
+
+                // Speed scaling up based on score
+                headSpawnRate = Math.max(400, 1200 - Math.floor(score / 500) * 40);
+
+                // Clean up and spawn next immediately
+                clearTimeout(currentHeadTimeout);
+                head.remove();
+                activeHeadElement = null;
+                setTimeout(spawnHead, 100);
+            };
+
+            head.addEventListener('pointerdown', handleTap);
+
+            playArea.appendChild(head);
+            activeHeadElement = head;
+
+            // Timeout si le joueur rate le timing (change de place automatiquement sans game over)
+            currentHeadTimeout = setTimeout(() => {
+                if (activeHeadElement === head) {
+                    head.remove();
+                    activeHeadElement = null;
+                    combo = 0;
+                    comboDisplay.classList.add('opacity-0');
+                    if (gameActive) {
+                        spawnHead();
+                    }
+                }
+            }, headSpawnRate);
+        }
+
+        function startGame() {
+            score = 0;
+            combo = 0;
+            headSpawnRate = 1200;
+            gameActive = true;
+
+            scoreDisplay.textContent = '000000';
+            comboDisplay.classList.add('opacity-0');
+
+            modalOverlay.classList.add('hidden');
+            spawnHead();
+        }
+
+        btnStart.addEventListener('click', startGame);
+    </script>
+</body>
+</html>
